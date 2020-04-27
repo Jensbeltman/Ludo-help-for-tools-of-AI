@@ -1,5 +1,8 @@
 #include "game.h"
+#include <array>
+#include <fstream>
 
+using namespace std;
 game::game()
 {
     reset();
@@ -58,6 +61,54 @@ void game::play_game()
         next_turn();
 }
 
+void game::play_game_with_replay(std::string file_path)
+{
+    ofstream file(file_path,std::ofstream::out | std::ofstream::trunc);
+
+    std::vector<std::array<int,19>> global_game_states;
+    std::array<int,19> current_global_game_state = {0};
+
+    while(has_won() == false){
+        next_turn_replay(current_global_game_state);
+        global_game_states.push_back(current_global_game_state);
+    }
+
+    for (auto itt = global_game_states.begin(); itt != global_game_states.end();itt++){
+        for (int v : *itt){
+            file<<std::to_string(v)<<" ";
+        }
+        if (itt != global_game_states.end()-1)
+            file<<"\n";
+    }
+
+}
+
+void game::next_turn_replay(std::array<int,19> &current_global_game_state )
+{
+    color = (color + 1) % 4;
+
+    int idx = 0;
+    for (int i = 0;i<4;i++)
+    {
+        for (int j = 0;j<4;j++){
+
+            current_global_game_state[i * 4 + j+ 3] = absolute_to_relative_replay(position[i * 4 + j], i);
+        }
+    }
+
+    update_dice();
+    update_relative_position();
+
+    int rel_piece = players[color]->make_decision(rel_pos_and_dice);
+
+    current_global_game_state[0] = color;
+    current_global_game_state[1] = game_dice.getValue();
+    current_global_game_state[2] = rel_piece;
+
+    move_piece(rel_piece);
+
+}
+
 bool game::has_won()
 {
     int begin = color * pieces_per_player;
@@ -78,9 +129,11 @@ void game::next_turn()
     color = (color + 1) % 4;
 
     update_dice();
+
     update_relative_position();
 
     int rel_piece = players[color]->make_decision(rel_pos_and_dice);
+
     move_piece(rel_piece);
 }
 
@@ -96,10 +149,16 @@ void game::update_relative_position()
     int start = color * pieces_per_player;
 
     for(int i = start; i < piece_count; i++, count++)
+    {
         rel_pos_and_dice.position[count] = absolute_to_relative(position[i]);
 
+    }
+
     for(int i = 0; i < start; i++, count++)
+    {
         rel_pos_and_dice.position[count] = absolute_to_relative(position[i]);
+
+    }
 }
 
 int game::absolute_to_relative(int square)
@@ -132,6 +191,36 @@ int game::absolute_to_relative(int square)
     return square;
 }
 
+int game::absolute_to_relative_replay(int square, int playerColor)
+{
+    if(square == -1) //home square
+        return 0;
+    if(square == 99) //goal square
+        return 57;
+
+    if(square >= 0 && square <= 51) //On a normal outfield square
+    {
+        square -= 13 * playerColor;
+
+        if(square < 0)
+            square += 52;
+    }
+    else if (square >= 52 && square <= 71) //On a goal stretch square
+    {
+        square -= (playerColor * 5) + 1;
+
+        if(square < 51)
+            square += 20;
+    }
+    else
+    {
+        std::cout << "Can't convert to relative square." << std::endl;
+        std::cout << "Piece on abs. square: " << square << " not allowed!" << std::endl;
+    }
+
+    return square+1;
+}
+
 void game::move_piece(int relative_piece)
 {
     if(is_valid_move(relative_piece))
@@ -161,8 +250,9 @@ void game::trusted_move_piece(int relative_piece)
     int piece_index = abs_piece_index(relative_piece);
     int abs_square = position[piece_index];
 
-    if(abs_square == -1)
+    if(abs_square == -1){
         move_start(piece_index);
+    }
     else
     {
         int rel_square = absolute_to_relative(abs_square);
@@ -185,8 +275,9 @@ void game::trusted_move_piece(int relative_piece)
             int opp = count_opponents(abs_square);
             if(opp == 0)                                          // Free square, place the moving piece here
                 position[piece_index] = abs_square;
-            else if(opp > 1)                                      // Protected square, send the moving piece home
-                position[piece_index] = -1;
+            else if(opp > 1)
+                // Protected square, send the moving piece home
+                    position[piece_index] = -1;
             else                                                  // Exactly one opponent
             {
                 if(abs_square % 13 == 0 || abs_square % 13 == 8)  // Opponent on globe, send the moving piece home
@@ -203,6 +294,7 @@ void game::trusted_move_piece(int relative_piece)
 
 void game::enforce_valid_move()
 {
+
     //Count how many legal moves the player has
     int validCount = 0;
     bool validMoves[pieces_per_player];
@@ -233,6 +325,7 @@ void game::enforce_valid_move()
         if(count == moveNumber)
         {
             trusted_move_piece(i);
+           // std::cout<<"Invalid move game force to take move"<<std::endl;
             break;
         }
     }
