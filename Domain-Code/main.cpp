@@ -106,6 +106,7 @@ int main()
         gq.reset();
         gq.set_first(i); //alternate who starts the game
         gq.play_game();
+        wins[gq.winner]++;
     }
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
