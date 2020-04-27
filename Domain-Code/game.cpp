@@ -11,6 +11,7 @@ game::game()
     generator = std::mt19937(rd());
 }
 
+
 game::game(iplayer* p0, iplayer* p1, iplayer* p2, iplayer* p3)
 {
     reset();

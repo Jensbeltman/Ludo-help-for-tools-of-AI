@@ -4,7 +4,8 @@
 #include "iplayer.h"
 #include "player_qlearning.h"
 #include "player_random.h"
-
+#include <numeric>      // std::iota
+#include <algorithm>    // std::sort, std::stable_sort
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -14,62 +15,63 @@
 
 using namespace std;
 
-void train() {
-    player_qlearning player_q_0;
-    player_qlearning player_q_1;
-    player_qlearning player_q_2;
-    player_qlearning player_q_3;
-    player_random player_r_0;
-    player_random player_r_1;
-    player_random player_r_2;
-    player_random player_r_3;
+template <typename T>
+vector<size_t> sort_indexes_decending(const vector<T> &v) {
 
-    //Play a game of Ludo
-    game gq(&player_q_0, &player_r_1, &player_r_2, &player_r_3);
+    // initialize original index locations
+    vector<size_t> idx(v.size());
+    iota(idx.begin(), idx.end(), 0);
 
-    player_q_0.epsilon = 0.5;
+    // sort indexes based on comparing values in v
+    // using std::stable_sort instead of std::sort
+    // to avoid unnecessary index re-orderings
+    // when v contains elements of equal values
+    stable_sort(idx.begin(), idx.end(), [&v](size_t i1, size_t i2) {return v[i1] > v[i2];});
+
+    return idx;
+}
+
+void set_player_parameters(array<player_qlearning*,4> players, double epsilon, double alpha, double gamma){
+    for (int i =0;i<4;i++) {
+        players[i]->set_parameters(epsilon, alpha, gamma);
+    }
+}
+
+array<player_qlearning*,4> get_new_players( double epsilon=0.3, double alpha=0.5, double gamma=0.2){
+    array<player_qlearning*,4> players;
+    for (int i = 0;i<4;i++){
+        players[i] = new player_qlearning;
+    }
+    return players;
+};
+
+void train(game &g,array<player_qlearning*,4> players, int iterations=10000){
+    g.set_players(players[0],players[1],players[2],players[3]);
     int wins[] = {0, 0, 0, 0};
-    auto start = std::chrono::high_resolution_clock::now();
-    int itt  = 100000;
-    for(int i = 0; i < itt; i++)
+    for(int i = 0; i < iterations; i++)
     {
-        gq.reset();
-        gq.set_first(i%4); //alternate who starts the game
-        gq.play_game();
-        wins[gq.get_winner()]++;
+        g.reset();
+        g.set_first(i%4); //alternate who starts the game
+        g.play_game();
+        wins[g.get_winner()]++;
     }
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    cout << "q size : " << player_q_0.qTable.size() << endl;
-
-    std::cout << "Games pr second(r): " << itt/elapsed.count() << "\n";
-    for(int i = 0; i < 4; i++)
-        cout << "Player " << i << " won " << wins[i] << " games." << endl;
-
-    for (int i = 0;i<4;i++)
-        wins[i] = 0;
-    start = std::chrono::high_resolution_clock::now();
-    player_q_0.epsilon = 0.01;
-
-    for(int i = 0; i < itt; i++)
+    cout<< "Wins percentages "<< (double)wins[0]/iterations<<"\t"<< (double)wins[1]/iterations<<"\t"<< (double)wins[2]/iterations<<"\t"<< (double)wins[3]/iterations<<"\t"<<"%"<<endl;
+}
+vector<size_t> evaluate(game &g, int iterations = 1000){
+    int mostWins[4];
+    vector<int> wins = {0, 0, 0, 0};
+    for(int i = 0; i < iterations; i++)
     {
-        gq.reset();
-        gq.set_first(i%4); //alternate who starts the game
-        gq.play_game();
-        wins[gq.get_winner()]++;
-
+        g.reset();
+        g.set_first(i%4); //alternate who starts the game
+        g.play_game();
+        wins[g.get_winner()]++;
     }
-    cout << "q size : " << player_q_0.qTable.size() << endl;
-    finish = std::chrono::high_resolution_clock::now();
-    elapsed = finish - start;
-    std::cout << "Games pr second(q): " << itt/elapsed.count() << "\n";
-    for(int i = 0; i < 4; i++)
-        cout << "Player " << i << " won " << wins[i] << " games." << endl;
-
-
-
+    cout<< "Wins percentages "<< (double)wins[0]/iterations<<"\t"<< (double)wins[1]/iterations<<"\t"<< (double)wins[2]/iterations<<"\t"<< (double)wins[3]/iterations<<"\t"<<"%"<<endl;
+    return sort_indexes_decending(wins);
 
 }
+
 
 void print_qvals(std::array<int,4> A){
     for (int v : A)
@@ -77,49 +79,52 @@ void print_qvals(std::array<int,4> A){
     cout<<endl;
 }
 
-//void qTableToFile(qtable qTabel,string file_path){
-//    ofstream file;
-//    file.open(file_path);
-//    for (auto state_action_pair :qTabel){
-//        file<<state_action_pair.second<<endl;
-//    }
-//
-//
-//}
-
 
 int main()
 {
-    player_qlearning player_q_0;
-    player_qlearning player_q_1;
-    player_qlearning player_q_2;
-    player_qlearning player_q_3;
+    auto players = get_new_players();
+    game g;
+    train(g,players,50000);
+    players[0]->set_parameters(1,0,0);
+    players[1]->set_parameters(1,0,0);
+    players[2]->set_parameters(0.0,0,0);
+    players[3]->set_parameters(0.0,0,0);
+    vector<std::size_t> mwp;
+    mwp = evaluate(g);
+    cout<<mwp[0]<<" "<<mwp[1]<<" "<<mwp[2]<<" "<<mwp[3]<<" "<<endl;
 
-    //Play a game of Ludo
-    game gq(&player_q_0, &player_q_1, &player_q_2, &player_q_3);
+    // TODO make the player qtable pointers such that they can be swapped easily
 
-    int wins[] = {0, 0, 0, 0};
-    auto start = std::chrono::high_resolution_clock::now();
-    int itt  = 10000;
-
-    for (int i = 0;i<itt;i++){
-        gq.reset();
-        gq.set_first(i); //alternate who starts the game
-        gq.play_game();
-        wins[gq.winner]++;
-    }
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    cout << "q size :"<<" "<<player_q_0.qTable.size()<<" "<<player_q_1.qTable.size()<<" "<<player_q_2.qTable.size()<<" "<<player_q_3.qTable.size()<<endl;
-
-
-    std::cout << "Games pr second(r): " << itt/elapsed.count() << "\n";
-    for(int i = 0; i < 4; i++)
-        cout << "Player " << i << " won " << wins[i] << " games." << endl;
-
-    gq.reset();
-    gq.set_first(1); //alternate who starts the game
-    gq.play_game_with_replay("./replayLudo.txt");
+//    player_qlearning player_q_0;
+//    player_qlearning player_q_1;
+//    player_qlearning player_q_2;
+//    player_qlearning player_q_3;
+//
+//    //Play a game of Ludo
+//    game gq(&player_q_0, &player_q_1, &player_q_2, &player_q_3);
+//
+//    int wins[] = {0, 0, 0, 0};
+//    auto start = std::chrono::high_resolution_clock::now();
+//    int itt  = 10000;
+//
+//    for (int i = 0;i<itt;i++){
+//        gq.reset();
+//        gq.set_first(i); //alternate who starts the game
+//        gq.play_game();
+//        wins[gq.winner]++;
+//    }
+//    auto finish = std::chrono::high_resolution_clock::now();
+//    std::chrono::duration<double> elapsed = finish - start;
+//    cout << "q size :"<<" "<<player_q_0.qTable.size()<<" "<<player_q_1.qTable.size()<<" "<<player_q_2.qTable.size()<<" "<<player_q_3.qTable.size()<<endl;
+//
+//
+//    std::cout << "Games pr second(r): " << itt/elapsed.count() << "\n";
+//    for(int i = 0; i < 4; i++)
+//        cout << "Player " << i << " won " << wins[i] << " games." << endl;
+//
+//    gq.reset();
+//    gq.set_first(1); //alternate who starts the game
+//    gq.play_game_with_replay("./replayLudo.txt");
 
 
     //train();

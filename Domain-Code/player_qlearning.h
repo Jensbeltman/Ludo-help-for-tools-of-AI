@@ -58,6 +58,7 @@ public:
 
     std::random_device rd;
     std::mt19937 generator;
+    int generator_max;
     std::uniform_int_distribution<int> distribution;
 
 
@@ -66,11 +67,18 @@ public:
     player_qlearning() {
         // TODO Consider adding something likeqTable.reserve()
         generator = std::mt19937(rd());
+        generator_max = (int)generator.max();
         update_state(piece_is_valid_option);
         for (move_evaluation mv:move_eval){
             mv.position = 0;
         }
     }
+
+    void set_parameters(double epsilon_v, double alpha_v, double gamma_v){
+        epsilon = epsilon_v;
+        alpha = alpha_v;
+        gamma = gamma_v;
+    };
 
 private:
     int make_decision() //Selects legal move at random
@@ -104,6 +112,7 @@ private:
         }
         else
         {
+            //std::cout<<"Non random aciton"<<std::endl;
             qtable::iterator qarray = qTable.find(state);
             int isend = qarray == qTable.end();
             int max = qarray->second[0];
@@ -126,35 +135,36 @@ private:
     }
 
     double randDouble(){
-        return ((double)generator() / RAND_MAX) + 1;
+        return ((double)generator() / UINT_MAX) ;
     }
     void update_pre_round_reward()
     {
         reward = 0;
-
-
-        int positionDiff = move_eval[action].position - position[action];
-
-
-        reward += positionDiff;
-
-        if (positionDiff > 0)
-            reward += move_eval[action].collisions*6; // if we didnt get sent home and reward is increased and collision happened
-
         int st = square_type(position[action]);
         int st_eval = square_type(move_eval[action].square_type);
+        int positionDiff = move_eval[action].position - position[action];
+
+        if(positionDiff<0){
+            reward -= 12;
+        }
+        if (st == HOME){
+            reward+=12;
+        }
+
+        if (positionDiff > 0) // if we didnt get sent home and reward is increased and collision happened
+            reward += move_eval[action].collisions*12;
 
 
         if ( st_eval ==  GLOBE) // if we land on globe
-            reward += 3;
+            reward += 8;
         else if( st ==  GLOBE ) // if not not land on globa and was on one before
-            reward -= 3;
+            reward -= 12;
 
         if (st != GOAL_AREA)
             if (st_eval == GOAL_AREA )
                 reward += 12;
             if (st != GOAL_AREA && move_eval[action].position == 99)
-                reward+=18;
+                reward+=24;
     }
 
     void update_post_round_reward(){
