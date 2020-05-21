@@ -24,6 +24,12 @@ public:
     int position[piece_count];      //the current board position (absolute position)
     dice game_dice;
 
+    std::array<int,4> player_was_sent_home={0};
+    std::array<int,4> player_sent_someone_home={0};
+    std::array<int,4> stars_hit={0};
+    std::array<int,4> globes_hit={0};
+
+
     positions_and_dice rel_pos_and_dice; //relative position and dice result to be send to the player agents
 
     std::mt19937 generator;
@@ -56,6 +62,7 @@ private: //private helper functions
     void move_start(int abs_piece);
     void send_them_home(int square);
     int  is_star(int square);
+    bool is_globe(int square);
     int  count_opponents(int square);
 };
 

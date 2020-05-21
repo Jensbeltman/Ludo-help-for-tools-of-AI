@@ -5,7 +5,6 @@
 using namespace std;
 game::game()
 {
-    reset();
 
     std::random_device rd;
     generator = std::mt19937(rd());
@@ -14,13 +13,11 @@ game::game()
 
 game::game(iplayer* p0, iplayer* p1, iplayer* p2, iplayer* p3)
 {
-    reset();
-
     players[0] = p0;
     players[1] = p1;
     players[2] = p2;
     players[3] = p3;
-
+    reset();
     std::random_device rd;
     generator = std::mt19937(rd());
 }
@@ -31,15 +28,25 @@ void game::set_players(iplayer *p0, iplayer *p1, iplayer *p2, iplayer *p3)
     players[1] = p1;
     players[2] = p2;
     players[3] = p3;
+    reset();
+
 }
 
 void game::reset()
 {
     winner = -1;
     color = 3;
+    for(auto player: players){
+        player->reset();
+    }
 
     for(int i = 0; i < piece_count; i++)
         position[i] = -1;
+
+    player_was_sent_home.fill(0);
+    player_sent_someone_home.fill(0);
+    stars_hit.fill(0);
+    globes_hit.fill(0);
 }
 
 void game::set_first(int first)
@@ -222,14 +229,13 @@ int game::absolute_to_relative_replay(int square, int playerColor)
     return square+1;
 }
 
-void game::move_piece(int relative_piece)
-{
-    if(is_valid_move(relative_piece))
-       trusted_move_piece(relative_piece);
-    else
+void game::move_piece(int relative_piece) {
+    if (is_valid_move(relative_piece))
+        trusted_move_piece(relative_piece);
+    else {
         enforce_valid_move(); //you are not allowed to cheat
+    }
 }
-
 bool game::is_valid_move(int relative_piece)
 {
     if(relative_piece < 0 || relative_piece >= pieces_per_player)
@@ -267,6 +273,8 @@ void game::trusted_move_piece(int relative_piece)
             position[piece_index] = rel_square + 1 + 5 * color;   // Convert goal stretch to absolute square
         else                                                      // Still on the outfield
         {
+            bool globe = is_globe(abs_square);
+
             rel_square += is_star(rel_square);                    // Jump if landed on a star
 
             abs_square = rel_square + 13 * color;                 // Convert back to absolute square
@@ -276,21 +284,29 @@ void game::trusted_move_piece(int relative_piece)
             int opp = count_opponents(abs_square);
             if(opp == 0)                                          // Free square, place the moving piece here
                 position[piece_index] = abs_square;
-            else if(opp > 1)
+            else if(opp > 1) {
                 // Protected square, send the moving piece home
-                    position[piece_index] = -1;
+                position[piece_index] = -1;
+                player_was_sent_home[color]++;
+            }
             else                                                  // Exactly one opponent
             {
-                if(abs_square % 13 == 0 || abs_square % 13 == 8)  // Opponent on globe, send the moving piece home
+                if(globe) {  // Opponent on globe, send the moving piece home
                     position[piece_index] = -1;
+                    player_was_sent_home[color]++;
+                }
                 else                                              // On normal square, send the opponent home
                 {
                     send_them_home(abs_square);
                     position[piece_index] = abs_square;
+                    player_sent_someone_home[color]++;
                 }
             }
+            if (globe)
+                globes_hit[color]++;
         }
     }
+
 }
 
 void game::enforce_valid_move()
@@ -326,7 +342,7 @@ void game::enforce_valid_move()
         if(count == moveNumber)
         {
             trusted_move_piece(i);
-           // std::cout<<"Invalid move game force to take move"<<std::endl;
+           std::cout<<"Invalid move game force to take move"<<std::endl;
             break;
         }
     }
@@ -361,19 +377,25 @@ int game::is_star(int square)
 {
     switch(square)
     {
-    case 5:  return 6;
-    case 18: return 6;
-    case 31: return 6;
-    case 44: return 6;
+    case 5:  stars_hit[color]++; return 6;
+    case 18: stars_hit[color]++; return 6;
+    case 31: stars_hit[color]++; return 6;
+    case 44: stars_hit[color]++; return 6;
 
-    case 11: return 7;
-    case 24: return 7;
-    case 37: return 7;
-    case 50: return 7;
+    case 11: stars_hit[color]++; return 7;
+    case 24: stars_hit[color]++; return 7;
+    case 37: stars_hit[color]++; return 7;
+    case 50: stars_hit[color]++; return 7;
 
     default: return 0;
     }
 }
+
+bool game::is_globe(int square)
+{
+    return (square % 13 == 0 || square % 13 == 8);
+}
+
 
 int game::count_opponents(int square)
 {

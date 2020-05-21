@@ -18,6 +18,12 @@ public:
     }
 
 private:
+    void reset(){
+        for(int i =16;i<16;i++){
+            position[i]=-1;
+        }
+    }
+
     int  make_decision() //Selects legal move at random
     {
         std::vector<int> options;
