@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <iterator>
 #include <boost/functional/hash.hpp>
-
+#include <limits>
 #define HOME -1
 #define START  0
 #define NEUTRAL 1
@@ -22,8 +22,9 @@
 #define state_variables_per_piece 5
 #define number_of_state_variables 7 * 4
 
+typedef float qType;
 typedef std::array<int, number_of_state_variables> stateA;
-typedef std::array<double, pieces_per_player> actionA;
+typedef std::array<qType, pieces_per_player> actionA;
 typedef std::unordered_map<stateA, actionA, boost::hash<stateA>> qtable;
 
 struct move_evaluation {
@@ -42,33 +43,39 @@ public:
                                         STAR, NEUTRAL, GLOBE, NEUTRAL, NEUTRAL, NEUTRAL, NEUTRAL, STAR, NEUTRAL,
                                         NEUTRAL, GLOBE, NEUTRAL, NEUTRAL, STAR, GOAL_AREA, GOAL_AREA, GOAL_AREA,
                                         GOAL_AREA, GOAL_AREA};
-    const int globes_idxs[5] = {0, 8, 21, 34, 47};
-    const int safe_globes_idxs[5] = {0, 8, 21, 34, 47};
-    const int star_idxs[8] = {5, 11, 18, 24, 31, 37, 44, 50};
+
+    const int star_idxs[8] = {5, 11, 18, 24, 31, 37, 44, 50}; // Used for finding next star
 
     double epsilon = 0.2;
     double alpha = 0.5;
     double gamma = 0.9;
 
+    qtable *qTable;
     stateA state;
     stateA state_prev;
-    int reward = 0;
-    long int acc_reward = 0;
-    int action = 0;
-    int prev_position[4]={-1,-1,-1,-1};
+    qType reward = 0;
+    qType acc_reward = 0;
+
     std::array<move_evaluation, 4> move_eval; // 4 move evaluation for each piece containing [new_pose,number off colision,who was sent home]
-    qtable *qTable;
+
+    int piece_to_move = 0;
+    int prev_position[4]={-1,-1,-1,-1};
+
+
 
     std::pair<stateA, actionA> newStateActionPair;
 
     std::array<bool, pieces_per_player> piece_is_valid_option = {false, false, false, false};
-    std::vector<int> options;
+    std::vector<int> player_options;
+    std::vector<int> max_qs;
+
     int enemyCol, start, globe, star, goal_area, enemys_behind, stuck;
 
     std::random_device rd;
     std::mt19937 generator;
     int generator_max;
-    std::uniform_int_distribution<int> distribution;
+    std::vector<std::uniform_int_distribution<int>> distributions;
+
 
 
 public:
@@ -78,6 +85,10 @@ public:
         qTable = new qtable;
         generator = std::mt19937(rd());
         generator_max = (int) generator.max();
+
+        for(int i =0;i<4;i++)
+            distributions.push_back(std::uniform_int_distribution<int>(0, i));
+
         update_state();
         for (move_evaluation mv:move_eval) {
             mv.position = 0;
@@ -86,6 +97,7 @@ public:
 
     void reset() {
         acc_reward = 0;
+        reward=0;
         for (int i = 0; i < 16; i++) {
             position[i] = -1;
         }
@@ -103,15 +115,15 @@ private:
     int make_decision() //Selects legal move at random
     {
 
-        options.clear();
+        player_options.clear();
         for (int i = 0; i < 4; i++) {
 
             piece_is_valid_option[i] = is_valid_move(i);
             if (piece_is_valid_option[i]==true)
-                options.push_back(i);
+                player_options.push_back(i);
         }
 
-        if (options.empty()) //no legal moves available
+        if (player_options.empty()) //no legal moves available
             return -1;
 
 
@@ -120,25 +132,28 @@ private:
         update_qtable();
 
 
-        if (options.size() == 1) //only one legal move
-            action = options[0];
+        if (player_options.size() == 1) //only one legal move
+            piece_to_move = player_options[0];
         else if (randDouble() < epsilon) {
-            distribution = std::uniform_int_distribution<int>(0, options.size() - 1);
-            action = options[distribution(generator)];
+            piece_to_move = player_options[distributions[player_options.size() - 1](generator)];
         } else {
-            //std::cout<<"Non random aciton"<<std::endl;
             qtable::iterator qarray = qTable->find(state);
-            int isend = qarray == qTable->end();
-            int max = INT32_MIN;
-            for (int i = 0; i < 4; i++) {
-                if (piece_is_valid_option[i]==true) {
-                    if (qarray->second[i] >= max) // todo implement random choise when multiple max values
-                    {
-                        max = qarray->second[i];
-                        action = i;
-                    }
-                }
+            actionA::iterator max = std::max_element(qarray->second.begin(),qarray->second.end());
+
+            max_qs.clear();
+            for (int i = 0; i < 4; i++)
+                if (qarray->second[i]==(*max) && piece_is_valid_option[i]==true)
+                    max_qs.push_back(i);
+
+            int max_size = max_qs.size();
+            if (max_size>1){
+                piece_to_move = max_qs[distributions[max_size - 1](generator)];
+            }else if (max_size==1){
+                piece_to_move = max_qs[0];
+            }else{
+                piece_to_move = player_options[distributions[player_options.size() - 1](generator)];
             }
+
 
         }
 
@@ -149,7 +164,7 @@ private:
         prev_position[2] = position[2];
         prev_position[3] = position[3];
 
-        return action;
+        return piece_to_move;
     }
 
 
@@ -157,50 +172,50 @@ private:
         return ((double) generator() / UINT_MAX);
     }
 
+
     void update_pre_round_reward() {
         reward = 0;
-        int st = square_type(position[action]);
-        int st_eval = square_type(move_eval[action].square_type);
-        int positionDiff = move_eval[action].position - position[action];
+        int st = square_type(position[piece_to_move]);
+        int st_eval = square_type(move_eval[piece_to_move].square_type);
+        int positionDiff = move_eval[piece_to_move].position - position[piece_to_move];
 
         if (positionDiff < 0) {
-            reward -= 50;
+            reward -= 0.5;
         } else if (st == HOME) {
-            reward += 50;
+            reward += 0.5;
         } else {
-            reward+=positionDiff*2;
-            if (move_eval[action].collisions == 1) // if we didnt get sent home and reward is increased and collision happened
-                reward += 50;
+            if (move_eval[piece_to_move].collisions == 1) // if we didnt get sent home and reward is increased and collision happened
+                reward += 0.5;
 
+            if (st_eval == STAR) // if we land on star
+                reward += 0.25;
 
             if (st_eval == GLOBE) // if we land on globe
-                reward += 10;
+                reward += 0.1;
             else if (st == GLOBE) // if not not land on globa and was on one before
-                reward -= 2;
+                reward -= 0.1;
 
 
             if (st != GOAL_AREA)
                 if (st_eval == GOAL_AREA)
-                    reward += 50;
+                    reward += 0.5;
             if (st_eval == GOAL_AREA)
-                reward += 50;
-            if (move_eval[action].position == 99)
+                reward += 0.5;
+            if (move_eval[piece_to_move].position == 99)
                 if (st != GOAL_AREA)
-                    reward += 100;
+                    reward += 0.1;
                 else
-                    reward += 50;
+                    reward += 0.5;
         }
     }
 
     void update_post_round_reward() {
         int players_sent_home=0;
         for (int p = 0;p<4;p++)
-        {
             if (prev_position[p] > -1 && prev_position[p]<51 && position[p] == -1)
                 players_sent_home++;
-        }
 
-        reward-=50*players_sent_home;
+        reward-=0.5*players_sent_home;
     }
 
     void update_qtable() {
@@ -219,10 +234,10 @@ private:
         } else
             stateMaxQ = std::max(*new_state_itt->second.begin(), *new_state_itt->second.begin());
 
-        int qval = qTable->operator[](state_prev)[action];
-        int qval_prev = qTable->operator[](state_prev)[action];
-        qTable->operator[](state_prev)[action] +=
-                alpha * (reward + gamma * stateMaxQ - qTable->operator[](state_prev)[action]);
+        qType qval = qTable->operator[](state_prev)[piece_to_move];
+        qType qval_prev = qTable->operator[](state_prev)[piece_to_move];
+        qTable->operator[](state_prev)[piece_to_move] +=
+                alpha * (reward + gamma * stateMaxQ - qTable->operator[](state_prev)[piece_to_move]);
     }
 
     int square_type(int piece_position) {
@@ -238,19 +253,29 @@ private:
         state_prev = state;
 
         int offset = 0;
-        int st = HOME;
+        int st_eval = HOME;
+        int st_curr = square_type(position[piece_to_move]);
         for (int p = 0; p < pieces_per_player; p++) {
             offset = state_variables_per_piece * p;
 
             if (piece_is_valid_option[p]) {
                 evaluate_move(p);
-                st = move_eval[p].square_type;
-                enemyCol = count_opponents(move_eval[p].collisions);
+                st_eval = move_eval[p].square_type;
+                enemyCol = count_opponents(move_eval[p].collisions,2);
                 start = int(move_eval[p].position == 0);
-                globe = int(st == GLOBE);
-                star = int(st == STAR);
-                goal_area = int(st == GOAL_AREA);
-                enemys_behind = get_enemys_behind(p,6);
+                globe = int(st_eval == GLOBE);
+                star = int(st_eval == STAR);
+
+                if (st_curr != GOAL_AREA)
+                    goal_area = int(st_eval == GOAL_AREA);
+                else
+                    goal_area = 2; // 2 then indicates that the piece is in the goal area
+
+
+                if (st_curr == GOAL_AREA)
+                    enemys_behind=0;
+                else
+                    enemys_behind = get_danger_level(p, 6);
                 stuck = 0;
             } else {
                 enemyCol = 0;
@@ -270,14 +295,14 @@ private:
             state[offset + 5] = enemys_behind;
             state[offset + 6] = stuck;
 
-            if (stuck==1)
-                state[offset + 6] = 0;
-            else
-                state[offset + 6] = dice;
+//            if (stuck==1)
+//                state[offset + 6] = 0;
+//            else
+//                state[offset + 6] = dice;
         }
     }
 
-    int get_enemys_behind(int piece, int look_back = 6){
+    int get_danger_level(int piece, int look_back = 6){
         int enemy_count = 0;
         int diff;
         for (int i = 4;i<16;i++){
@@ -285,7 +310,10 @@ private:
             if (-look_back<=diff && diff<0)
                 enemy_count++;
         }
-        return enemy_count;
+        if (enemy_count>1)
+            return 2;
+        else
+            return enemy_count;
     }
 
     int next_star(int piece_square) {
@@ -320,7 +348,10 @@ private:
                 }
 
                 int opp = count_opponents(piece_square);
+
+
                 move_eval[piece].collisions = opp;
+
                 if (opp == 0) {
                     move_eval[piece].position = piece_square;
                     return;
@@ -336,14 +367,17 @@ private:
     }
 
 
-    int count_opponents(int square) {
+    int count_opponents(int square, int max = 4) {
         int count = 0;
         for (int i = 4; i < piece_count; i++) // loop all pieces
             if (position[i] == square)    // on the square
                 count++; // TODO optimize by stopping for loop when the player in collision is identified ?
-
+                if (count == max)
+                    return count;
         return count;
     }
+
+
 };
 
 #endif // PLAYER_QLEARNING_H

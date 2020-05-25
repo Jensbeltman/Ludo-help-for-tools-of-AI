@@ -39,6 +39,7 @@ public:
     game();
     game(iplayer* p0, iplayer* p1, iplayer* p2, iplayer* p3);
     void set_players(iplayer* p0, iplayer* p1, iplayer* p2, iplayer* p3);
+    void set_players(std::array<iplayer*,4> &new_players);
     void reset();
     void set_first(int first); //the index of the player to start the game [0 to 3]
     int  get_winner();

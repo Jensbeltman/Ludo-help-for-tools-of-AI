@@ -20,8 +20,6 @@ public:
         return make_decision();
     }
 
-    virtual void reset()=0;
-
 protected:
     virtual int make_decision() = 0; //This is the function you need to implement in you own player classes
 
@@ -39,6 +37,7 @@ protected:
 
         return false;
     }
+
 };
 
 #endif // IPLAYER

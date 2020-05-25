@@ -5,7 +5,7 @@
 using namespace std;
 game::game()
 {
-
+    reset();
     std::random_device rd;
     generator = std::mt19937(rd());
 }
@@ -13,11 +13,13 @@ game::game()
 
 game::game(iplayer* p0, iplayer* p1, iplayer* p2, iplayer* p3)
 {
+    reset();
+
     players[0] = p0;
     players[1] = p1;
     players[2] = p2;
     players[3] = p3;
-    reset();
+
     std::random_device rd;
     generator = std::mt19937(rd());
 }
@@ -28,17 +30,19 @@ void game::set_players(iplayer *p0, iplayer *p1, iplayer *p2, iplayer *p3)
     players[1] = p1;
     players[2] = p2;
     players[3] = p3;
-    reset();
-
+}
+void game::set_players(array<iplayer*,4> &new_players)
+{
+    players[0] = new_players[0];
+    players[1] = new_players[1];
+    players[2] = new_players[2];
+    players[3] = new_players[3];
 }
 
 void game::reset()
 {
     winner = -1;
     color = 3;
-    for(auto player: players){
-        player->reset();
-    }
 
     for(int i = 0; i < piece_count; i++)
         position[i] = -1;
@@ -95,11 +99,9 @@ void game::next_turn_replay(std::array<int,19> &current_global_game_state )
 {
     color = (color + 1) % 4;
 
-    int idx = 0;
     for (int i = 0;i<4;i++)
     {
         for (int j = 0;j<4;j++){
-
             current_global_game_state[i * 4 + j+ 3] = absolute_to_relative_replay(position[i * 4 + j], i);
         }
     }
@@ -137,17 +139,25 @@ void game::next_turn()
     color = (color + 1) % 4;
 
     update_dice();
-
     update_relative_position();
 
     int rel_piece = players[color]->make_decision(rel_pos_and_dice);
-
     move_piece(rel_piece);
 }
 
 void game::update_dice()
 {
-    game_dice.roll();
+    bool all_home = (position[color*4]==-1 && color*4+1==-1 && color*4+2==-1 && color*4+3==-1);
+    if (all_home){
+        for(int i = 0;i<3;i++) {
+            game_dice.roll();
+            if (game_dice.getValue()==6)
+                break;
+        }
+
+    }else {
+        game_dice.roll();
+    }
     rel_pos_and_dice.dice = game_dice.getValue();
 }
 
@@ -204,6 +214,7 @@ int game::absolute_to_relative_replay(int square, int playerColor)
     if(square == -1) //home square
         return 0;
     if(square == 99) //goal square
+        return 57;
         return 57;
 
     if(square >= 0 && square <= 51) //On a normal outfield square
@@ -282,8 +293,9 @@ void game::trusted_move_piece(int relative_piece)
                 abs_square -= 52;
 
             int opp = count_opponents(abs_square);
-            if(opp == 0)                                          // Free square, place the moving piece here
-                position[piece_index] = abs_square;
+            if(opp == 0){                                          // Free square, place the moving piece here
+            position[piece_index] = abs_square;
+            }
             else if(opp > 1) {
                 // Protected square, send the moving piece home
                 position[piece_index] = -1;
@@ -291,7 +303,7 @@ void game::trusted_move_piece(int relative_piece)
             }
             else                                                  // Exactly one opponent
             {
-                if(globe) {  // Opponent on globe, send the moving piece home
+                if(abs_square % 13 == 0 || abs_square % 13 == 8) {  // Opponent on globe, send the moving piece home
                     position[piece_index] = -1;
                     player_was_sent_home[color]++;
                 }
@@ -393,7 +405,7 @@ int game::is_star(int square)
 
 bool game::is_globe(int square)
 {
-    return (square % 13 == 0 || square % 13 == 8);
+    return ((square % 13) == 0 || (square % 13) == 8);
 }
 
 

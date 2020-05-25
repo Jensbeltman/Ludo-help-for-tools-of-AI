@@ -6,7 +6,7 @@
 
 //***************************************************************************************
 //*     Strategy of 'player_aggro_fast'                                                 *
-//*     If possible send an opponent home, if multiple options, goes for maximum damage *
+//*     If possible send an opponent home, if multiple player_options, goes for maximum damage *
 //*     Else brings pieces into goal and into play when possible,                       *
 //*     but else it will push the front most piece around the outfield,                 *
 //*     while making sure it only sends its own pieces home when forced to do so.       *
@@ -33,7 +33,7 @@ private:
             return logic.first_legal_move(); // Don't waste time analysing
 
         //This makes us aggressive
-        piece = logic.move_send_home();    if(piece != -1) return piece; // Send an opponent home, go for maximum damage if multiple options
+        piece = logic.move_send_home();    if(piece != -1) return piece; // Send an opponent home, go for maximum damage if multiple player_options
 
         //Else do almost like 'player_fast'
         piece = logic.move_into_goal();    if(piece != -1) return piece; // Bring a piece into goal
